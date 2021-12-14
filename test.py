@@ -16,6 +16,12 @@ from datetime import datetime
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s [%(levelname)s] %(message)s')
 
+# Create a simple async task to update the time resource
+async def update_time(time_resource):
+    while True:
+        await asyncio.sleep(1)
+        time_resource.set_value(datetime.now())
+
 if __name__ == '__main__':
     # Default to bind to local address & port
     parser = argparse.ArgumentParser()
@@ -32,7 +38,9 @@ if __name__ == '__main__':
         obj3.add_resource(LwM2MResourceValue(3, 0, 1, 'Sentrius IG60'))
         obj3.add_multi_resource(LwM2MResourceInst(3, 0, 6, 0, 0))
         obj3.add_multi_resource(LwM2MResourceInst(3, 0, 6, 1, 1))
-        obj3.add_resource(LwM2MResourceValue(3, 0, 13, datetime.now()))
+        time_resource = LwM2MResourceValue(3, 0, 13, datetime.now())
+        loop.create_task(update_time(time_resource))
+        obj3.add_resource(time_resource)
         obj3.add_resource(LwM2MResourceValue(3, 0, 14, 'UTC+0500'))
         obj3.add_resource(LwM2MResourceValue(3, 0, 15, 'EST'))
         client.add_object(obj3)

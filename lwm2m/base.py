@@ -5,6 +5,7 @@ class LwM2MBase(ObservableResource):
 
     def __init__(self, desc = ''):
         self.desc = desc
+        super(LwM2MBase, self).__init__()
 
     def get_desc(self):
         return self.desc

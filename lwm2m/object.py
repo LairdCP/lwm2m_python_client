@@ -27,6 +27,8 @@ class LwM2MObjectInst(LwM2MBase):
         self.obj_id = obj_id
         self.obj_inst = obj_inst
         self.resources = {}
+        self.observe = False
+        self.notify_cb = None
         super(LwM2MObjectInst, self).__init__(f'Obj_{obj_id}_{obj_inst}')
 
     def get_id(self):
@@ -37,6 +39,7 @@ class LwM2MObjectInst(LwM2MBase):
 
     def add_resource(self, res):
         self.resources[res.get_id()] = res
+        res.notify(self.resource_changed)
 
     def add_multi_resource(self, res):
         res_id = res.get_id()
@@ -58,6 +61,20 @@ class LwM2MObjectInst(LwM2MBase):
             else:
                 # Remove resource value
                 del self.resources[res_inst]
+
+    def update_observation_count(self, newcount):
+        log.debug(f'{self.desc} observation count = {newcount}')
+        self.observe = newcount > 0
+        super(LwM2MObjectInst, self).update_observation_count(newcount)
+
+    def resource_changed(self):
+        if self.observe:
+            self.updated_state(TlvEncoder.get_object(self))
+        if self.notify_cb:
+            self.notify_cb()
+
+    def notify(self, notify_cb):
+        self.notify_cb = notify_cb
 
     def build_site(self, site):
         """Add CoAP resource link to this object instance and its resources"""
@@ -81,7 +98,7 @@ class LwM2MObjectInst(LwM2MBase):
         return f'</{self.obj_id}/{self.obj_inst}>'
 
     async def render_get(self, request):
-        log.debug(f'{self.desc}: GET request format={request.opt.content_format}')
+        log.debug(f'{self.desc}: GET request format={request.opt.content_format} observe={request.opt.observe}')
         return TlvEncoder.get_object(self)
 
     async def render_post(self, request):
@@ -94,10 +111,12 @@ class LwM2MBaseObject(LwM2MBase):
     def __init__(self, obj_id):
         self.obj_id = obj_id
         self.instances = {}
+        self.observe = False
         super(LwM2MBaseObject, self).__init__(f'Obj_{obj_id}')
 
     def add_obj_inst(self, obj):
         self.instances[obj.get_inst()] = obj
+        obj.notify(self.inst_changed)
 
     def remove_obj_inst(self, obj_inst):
         self.instances.pop(obj_inst, None)
@@ -105,6 +124,15 @@ class LwM2MBaseObject(LwM2MBase):
 
     def get_id(self):
         return self.obj_id
+
+    def update_observation_count(self, newcount):
+        log.debug(f'{self.desc} observation count = {newcount}')
+        self.observe = newcount > 0
+        super(LwM2MBaseObject, self).update_observation_count(newcount)
+
+    def inst_changed(self):
+        if self.observe:
+            self.updated_state(TlvEncoder.get_objects(self))
 
     def build_site(self, site):
         """Build site resources for multiple objects"""
@@ -118,7 +146,7 @@ class LwM2MBaseObject(LwM2MBase):
         return self.instances
 
     async def render_get(self, request):
-        log.debug(f'{self.desc}: GET request format={request.opt.content_format}')
+        log.debug(f'{self.desc}: GET request format={request.opt.content_format} observe={request.opt.observe}')
         return TlvEncoder.get_objects(self)
 
     def get_obj_links(self):

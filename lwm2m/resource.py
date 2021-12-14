@@ -20,16 +20,22 @@ from .tlv import TlvEncoder, TlvDecoder
 
 log = logging.getLogger('resource')
 
-class LwM2MResourceValue(LwM2MBase):
-    """Implementation of an LwM2M resource value"""
+class LwM2MResourceBase(LwM2MBase):
+    """Base implementation of an LwM2M resource value or instance"""
 
-    def __init__(self, obj_id, obj_inst, res_id, value):
+    def __init__(self, obj_id, obj_inst, res_id, res_inst = None, value = None):
         self.obj_id = obj_id
         self.obj_inst = obj_inst
         self.res_id = res_id
+        self.res_inst = res_inst
         self.value = value
         self._type = type(value).__name__
-        super(LwM2MResourceValue, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
+        self.observe = False
+        self.notify_cb = None
+        if res_inst:
+            super(LwM2MResourceBase, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}_{res_inst}')
+        else:
+            super(LwM2MResourceBase, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
 
     def get_id(self):
         return self.res_id
@@ -39,12 +45,33 @@ class LwM2MResourceValue(LwM2MBase):
 
     def set_value(self, value):
         self.value = value
+        if self.notify_cb:
+            self.notify_cb()
+
+    def update_observation_count(self, newcount):
+        log.debug(f'{self.desc} observation count = {newcount}')
+        self.observe = newcount > 0
+        super(LwM2MResourceBase, self).update_observation_count(newcount)
 
     def get_type(self):
         return self._type
 
     def update(self, value):
-        self.set_value(value)
+        self.value = value
+
+    def notify(self, notify_cb):
+        self.notify_cb = notify_cb
+
+class LwM2MResourceValue(LwM2MResourceBase):
+    """Implementation of an LwM2M resource value"""
+    def __init__(self, obj_id, obj_inst, res_id, value = None):
+        super(LwM2MResourceValue, self).__init__(obj_id, obj_inst, res_id, None, value)
+
+    def set_value(self, value):
+        super(LwM2MResourceValue, self).set_value(value)
+        if self.observe:
+            log.debug(f'Sending notify for {self.desc}')
+            self.updated_state(TlvEncoder.get_resource_value(self))
 
     def build_site(self, site):
         """Add CoAP resource link to this resource value"""
@@ -52,7 +79,7 @@ class LwM2MResourceValue(LwM2MBase):
         site.add_resource((str(self.obj_id), str(self.obj_inst), str(self.res_id)), self)
 
     async def render_get(self, request):
-        log.debug(f'{self.desc}: GET request format={request.opt.content_format}')
+        log.debug(f'{self.desc}: GET request format={request.opt.content_format} observe={request.opt.observe}')
         return TlvEncoder.get_resource_value(self)
 
     async def render_post(self, request):
@@ -63,32 +90,20 @@ class LwM2MResourceValue(LwM2MBase):
         log.debug(f'{self.desc}: PUT request format={request.opt.content_format}')
         return TlvDecoder.update_resource_value(request, self)
 
-class LwM2MResourceInst(LwM2MBase):
+class LwM2MResourceInst(LwM2MResourceBase):
     """Implementation of an LwM2M resource instance"""
 
     def __init__(self, obj_id, obj_inst, res_id, res_inst, value = None):
-        self.obj_id = obj_id
-        self.obj_inst = obj_inst
-        self.res_id = res_id
-        self.res_inst = res_inst
-        self.value = value
-        self._type = type(value).__name__
-        super(LwM2MResourceInst, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}_{res_inst}')
-
-    def get_id(self):
-        return self.res_id
+        super(LwM2MResourceInst, self).__init__(obj_id, obj_inst, res_id, res_inst, value)
 
     def get_inst(self):
         return self.res_inst
 
-    def get_value(self):
-        return self.value
-
-    def get_type(self):
-        return self._type
-
     def set_value(self, value):
-        self.value = value
+        super(LwM2MResourceInst, self).set_value(value)
+        if self.observe:
+            log.debug(f'Sending notify for {self.desc}')
+            self.updated_state(TlvEncoder.get_resource_inst(self))
 
     def build_site(self, site):
         """Add CoAP resource link to this resource instance"""
@@ -96,7 +111,7 @@ class LwM2MResourceInst(LwM2MBase):
         site.add_resource((str(self.obj_id), str(self.obj_inst), str(self.res_id), str(self.res_inst)), self)
 
     async def render_get(self, request):
-        log.debug(f'{self.desc}: GET request format={request.opt.content_format}')
+        log.debug(f'{self.desc}: GET request format={request.opt.content_format} observe={request.opt.observe}')
         return TlvEncoder.get_resource_inst(self)
 
     async def render_post(self, request):
@@ -112,6 +127,8 @@ class LwM2MMultiResource(LwM2MBase):
         self.res_id = res_id
         self.instances = {}
         self._type = None
+        self.observe = False
+        self.notify_cb = None
         super(LwM2MMultiResource, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
 
     def add_res_inst(self, res):
@@ -119,6 +136,8 @@ class LwM2MMultiResource(LwM2MBase):
         # Store type so we can properly decode writes
         if self._type == None:
             self._type = type(res.get_value()).__name__
+        # Tell instance to notify us when changed
+        res.notify(self.instance_changed)
 
     def get_id(self):
         return self.res_id
@@ -137,6 +156,20 @@ class LwM2MMultiResource(LwM2MBase):
             else:
                 self.instances[inst] = LwM2MResourceInst(self.obj_id, self.obj_inst, self.res_id, inst, newval)
 
+    def update_observation_count(self, newcount):
+        log.debug(f'{self.desc} observation count = {newcount}')
+        self.observe = newcount > 0
+        super(LwM2MMultiResource, self).update_observation_count(newcount)
+
+    def instance_changed(self):
+        if self.observe:
+            self.updated_state(TlvEncoder.get_multi_resource(self))
+        if self.notify_cb:
+            self.notify_cb()
+
+    def notify(self, notify_cb):
+        self.notify_cb = notify_cb
+
     def build_site(self, site):
         """Add CoAP resource link to the base resource and its instances"""
         log.debug(f'{self.obj_id}/{self.obj_inst}/{self.res_id} -> {self.desc}')
@@ -145,7 +178,7 @@ class LwM2MMultiResource(LwM2MBase):
             res.build_site(site)
 
     async def render_get(self, request):
-        log.debug(f'{self.desc}: GET request format={request.opt.content_format}')
+        log.debug(f'{self.desc}: GET request format={request.opt.content_format} observe={request.opt.observe}')
         return TlvEncoder.get_multi_resource(self)
 
     async def render_post(self, request):
