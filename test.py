@@ -26,9 +26,15 @@ if __name__ == '__main__':
     # Default to bind to local address & port
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', '--address', default='127.0.0.1', help='Local address to bind')
-    parser.add_argument('-p', '--port', default=5683, help='Local port to bind')
+    parser.add_argument('-p', '--port', default=5782, help='Local port to bind')
+    parser.add_argument('-bs', '--bootstrap-address', default='localhost', help='Address of bootstrap server')
+    parser.add_argument('-bp', '--bootstrap-port', default=5683, help='Port of bootstrap server')
+    parser.add_argument('-s', '--server-address', default='', help='Address of LwM2M server')
+    parser.add_argument('-sp', '--server-port', default=0, help='Port of L2M2M server')
+    parser.add_argument('-e', '--endpoint', default='python-client', help='L2M2M Endpoint')
     args = parser.parse_args()
-    client = LwM2MClient(args.address, args.port)
+    logging.getLogger().info(args)
+    client = LwM2MClient(**vars(args))
     loop = asyncio.get_event_loop()
     loop.create_task(client.start())
     try:

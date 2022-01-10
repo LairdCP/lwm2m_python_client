@@ -105,6 +105,10 @@ class LwM2MObjectInst(LwM2MBase):
         log.debug(f'{self.desc}: POST request format={request.opt.content_format}')
         return TlvDecoder.update_object(request, self)
 
+    async def render_put(self, request):
+        log.debug(f'{self.desc}: PUT request format={request.opt.content_format}')
+        return TlvDecoder.update_object(request, self)
+
 class LwM2MBaseObject(LwM2MBase):
     """Implementation of an LwM2M object that references one or more object instances"""
 
@@ -112,6 +116,7 @@ class LwM2MBaseObject(LwM2MBase):
         self.obj_id = obj_id
         self.instances = {}
         self.observe = False
+        self.site_changed_cb = None
         super(LwM2MBaseObject, self).__init__(f'Obj_{obj_id}')
 
     def add_obj_inst(self, obj):
@@ -137,10 +142,17 @@ class LwM2MBaseObject(LwM2MBase):
     def build_site(self, site):
         """Build site resources for multiple objects"""
         log.debug(f'{self.obj_id} -> {self.desc}')
-        site.add_resource((self.obj_id,), self)
+        site.add_resource((str(self.obj_id),), self)
         for obj_inst, obj in self.instances.items():
             # Target for each instance
             obj.build_site(site)
+
+    def site_changed(self, site_changed_cb):
+        self.site_changed_cb = site_changed_cb
+
+    def notify_site_changed(self):
+        if self.site_changed_cb is not None:
+            self.site_changed_cb()
 
     def get_instances(self):
         return self.instances

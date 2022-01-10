@@ -293,17 +293,18 @@ class TlvDecoder(object):
             # Decode/validate all resources before changing the object
             while payload:
                 tlv_type, res_id, value_bytes, payload = TlvDecoder.decode_tlv(payload)
-                # Note this next line will throw an exception if the resource id
-                # does not exist, hence validating the resource id and type
-                res_type = obj_inst.get_resource(res_id).get_type()
-                if tlv_type == TlvType.RESOURCE_VALUE.value:
-                    # Decode a resource value
-                    resources[res_id] = TlvDecoder.decode_value(res_type, value_bytes)
-                elif tlv_type == TlvType.MULTIPLE_RESOURCE.value:
-                    # Decode a multi-resource
-                    resources[res_id] = TlvDecoder.decode_multi_resource(res_type, value_bytes)
+                if res_id in obj_inst.get_resources():
+                    res_type = obj_inst.get_resource(res_id).get_type()
+                    if tlv_type == TlvType.RESOURCE_VALUE.value:
+                        # Decode a resource value
+                        resources[res_id] = TlvDecoder.decode_value(res_type, value_bytes)
+                    elif tlv_type == TlvType.MULTIPLE_RESOURCE.value:
+                        # Decode a multi-resource
+                        resources[res_id] = TlvDecoder.decode_multi_resource(res_type, value_bytes)
+                    else:
+                        raise Exception(f'Invalid TLV type: {tlv_type}')
                 else:
-                    raise Exception(f'Invalid TLV type: {tlv_type}')
+                    logger.debug(f'Skipping optional resource {res_id}')
             logger.debug(f'Updating object with {resources}')
             obj_inst.update(resources)
             return Message(code=Code.CHANGED)
