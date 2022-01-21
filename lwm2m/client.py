@@ -7,6 +7,7 @@ client).
 
 import logging
 import asyncio
+import os
 
 from aiocoap import error, resource
 from aiocoap.message import Message
@@ -18,6 +19,7 @@ from urllib.parse import urlparse
 from .base import LwM2MBase
 from .object import LwM2MBaseObject
 from .bootstrap import LwM2MSecurityBaseObject, LwM2MServerBaseObject
+from .dtls import DtlsContext
 
 log = logging.getLogger('client')
 
@@ -44,14 +46,17 @@ class LwM2MBootstrapFinish(LwM2MBase):
 class LwM2MClient(Site):
     """LwM2M client implementation"""
 
-    def __init__(self, address, port, bootstrap_address, bootstrap_port, server_address, server_port, endpoint):
+    def __init__(self, address, port, bootstrap_address, bootstrap_port,
+        bootstrap_psk, server_address, server_port, server_psk, endpoint):
         super(LwM2MClient, self).__init__()
         self.address = address
         self.port = port
         self.bootstrap_address = bootstrap_address
         self.bootstrap_port = bootstrap_port
+        self.bootstrap_psk = bytes.fromhex(bootstrap_psk)
         self.server_address = server_address
         self.server_port = server_port
+        self.server_psk = bytes.fromhex(server_psk)
         self.endpoint = endpoint
         self.lifetime = 3600
         self.binding_mode = 'U'
@@ -109,32 +114,48 @@ class LwM2MClient(Site):
             links = links + base_obj.get_obj_links()
         return links
 
-    async def bootstrap_request(self):
+    async def bootstrap_request(self, context):
         """Perform LwM2M bootstrap request"""
-        bootstrap_uri = f'coap://{self.bootstrap_address}:{self.bootstrap_port}/bs?ep={self.endpoint}'
+        bootstrap_uri = f'coap{"s" if self.bootstrap_psk else ""}://{self.bootstrap_address}:{self.bootstrap_port}/bs?ep={self.endpoint}'
         log.debug(f'Bootstrap request: {bootstrap_uri}')
         request = Message(code=Code.POST, uri=bootstrap_uri)
-        response = await self.context.request(request).response
+        response = await context.request(request).response
         if response.code != Code.CHANGED:
             raise BaseException(
                 f'unexpected code received: {response.code}. Unable to register!')
 
     async def client_bootstrap(self):
         """Perform client bootstrap"""
-        await self.bootstrap_request()
+        if self.bootstrap_psk:
+            bs_context = await DtlsContext.create_server_context(self, bind=(self.address, self.port))
+            bs_context.client_credentials.load_from_dict(
+                { f'*' : { 'dtls' : {
+                    'psk' : self.bootstrap_psk,
+                    'client-identity' : self.endpoint.encode()
+                }}}
+            )
+        else:
+            bs_context = await Context.create_server_context(self, bind=(self.address, self.port))
+        await self.bootstrap_request(bs_context)
         await self.bootstrap_finish_event.wait()
+        await bs_context.shutdown()
         # Obtain bootstrap config to client
         server_uri = self.security_base.get_server_uri()
         log.info(f'L2M2M server URI after bootstrap: {server_uri}')
         u = urlparse(server_uri)
         self.server_address = u.hostname
         self.server_port = u.port
+        lifetime = self.server_base.get_lifetime()
+        if lifetime > 0:
+            log.info(f'Client lifetime is now {lifetime}')
+            self.lifetime  = lifetime
+        self.server_psk = self.security_base.get_psk()
 
     async def register(self):
         """Perform initial LwM2M client registration"""
         request = Message(code=Code.POST, payload=','.join(
             self.get_reg_links()).encode(),
-            uri=f'coap://{self.server_address}:{self.server_port}'
+            uri=f'coap{"s" if self.server_psk else ""}://{self.server_address}:{self.server_port}'
         )
         request.opt.uri_host = self.server_address
         request.opt.uri_port = self.server_port
@@ -159,7 +180,7 @@ class LwM2MClient(Site):
     async def update_register(self):
         """Update LwM2M client registration"""
         log.debug('update_register()')
-        update = Message(code=Code.POST, uri=f'coap://{self.server_address}:{self.server_port}')
+        update = Message(code=Code.POST, uri=f'coap{"s" if self.server_psk else ""}://{self.server_address}:{self.server_port}')
         update.opt.uri_host = self.server_address
         update.opt.uri_port = self.server_port
         update.opt.uri_path = ('rd', self.rd_resource)
@@ -179,8 +200,17 @@ class LwM2MClient(Site):
     async def start(self):
         """Start and run the LwM2M client"""
         self.build_site()
-        self.context = await Context.create_server_context(self, bind=(self.address, self.port))
         if self.bootstrap_address and self.bootstrap_port:
             # Perform bootstrap before starting client
             await self.client_bootstrap()
+        if self.server_psk:
+            self.context = await DtlsContext.create_server_context(self, bind=(self.address, self.port))
+            self.context.client_credentials.load_from_dict(
+                { f'*' : { 'dtls' : {
+                    'psk' : self.server_psk,
+                    'client-identity' : self.endpoint.encode()
+                }}}
+            )
+        else:
+            self.context = await Context.create_server_context(self, bind=(self.address, self.port))
         await self.register()

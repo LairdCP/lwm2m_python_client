@@ -1,1 +1,2 @@
-aiocoap==0.4.2
+aiocoap==0.4.3
+DTLSSocket==0.1.12
