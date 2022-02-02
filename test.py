@@ -10,11 +10,10 @@ import argparse
 from lwm2m.client import LwM2MClient
 from lwm2m.resource import LwM2MResourceValue, LwM2MResourceInst
 from lwm2m.object import LwM2MObjectInst
+from ig60_fwupdate import IG60FWUpdateObject
 
 from datetime import datetime
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s [%(levelname)s] %(message)s')
 
 # Create a simple async task to update the time resource
 async def update_time(time_resource):
@@ -34,7 +33,13 @@ if __name__ == '__main__':
     parser.add_argument('-sp', '--server-port', type=int, default=5684, help='Port of L2M2M server')
     parser.add_argument('-sk', '--server-psk', default='', help='PSK for DTLS-enabled bootstrap server (hex)')
     parser.add_argument('-e', '--endpoint', default='python-client', help='L2M2M Endpoint')
+    parser.add_argument('-d', '--debug', action='store_true', help='Set debug logging')
     args = parser.parse_args()
+    if args.debug:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    logging.basicConfig(level=level, format='%(asctime)s [%(levelname)s] %(message)s')
     logging.getLogger().info(args)
     client = LwM2MClient(**vars(args))
     loop = asyncio.get_event_loop()
@@ -52,6 +57,8 @@ if __name__ == '__main__':
         obj3.add_resource(LwM2MResourceValue(3, 0, 14, 'UTC+0500'))
         obj3.add_resource(LwM2MResourceValue(3, 0, 15, 'EST'))
         client.add_object(obj3)
+        # Add IG60 firmware update object
+        client.add_object(IG60FWUpdateObject())
         loop.run_forever()
     except KeyboardInterrupt:
         loop.close()

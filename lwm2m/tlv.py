@@ -146,12 +146,12 @@ class TlvEncoder(object):
         logger.debug(f'Packing object {obj.get_desc()} resources')
         payload = bytearray()
         for id, res in obj.get_resources().items():
-            if getattr(res, 'get_instances', None) == None:
-                # Resource value implementation
-                payload.extend(TlvEncoder.pack_resource_value(res))
-            else:
+            if getattr(res, 'get_instances', None):
                 # Multi-resource implementation
                 payload.extend(TlvEncoder.pack_multi_resource(res))
+            elif getattr(res, 'get_value', None):
+                # Resource value implementation
+                payload.extend(TlvEncoder.pack_resource_value(res))
         return bytes(payload)
 
     @staticmethod

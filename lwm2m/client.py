@@ -47,7 +47,7 @@ class LwM2MClient(Site):
     """LwM2M client implementation"""
 
     def __init__(self, address, port, bootstrap_address, bootstrap_port,
-        bootstrap_psk, server_address, server_port, server_psk, endpoint):
+        bootstrap_psk, server_address, server_port, server_psk, endpoint, **kwargs):
         super(LwM2MClient, self).__init__()
         self.address = address
         self.port = port
