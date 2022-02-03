@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Test application for Python LwM2M client"""
+"""Python LwM2M Client for IG60"""
 
 import logging
 import asyncio
@@ -8,18 +8,8 @@ import sys
 import argparse
 
 from lwm2m.client import LwM2MClient
-from lwm2m.resource import LwM2MResourceValue, LwM2MResourceInst
-from lwm2m.object import LwM2MObjectInst
+from ig60_device import IG60DeviceObject
 from ig60_fwupdate import IG60FWUpdateObject
-
-from datetime import datetime
-
-
-# Create a simple async task to update the time resource
-async def update_time(time_resource):
-    while True:
-        await asyncio.sleep(1)
-        time_resource.set_value(datetime.now())
 
 if __name__ == '__main__':
     # Default to bind to local address & port
@@ -45,18 +35,8 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.create_task(client.start())
     try:
-        # Add default single instance for Object 3
-        obj3 = LwM2MObjectInst(3)
-        obj3.add_resource(LwM2MResourceValue(3, 0, 0, 'Laird Connectivity, Inc.'))
-        obj3.add_resource(LwM2MResourceValue(3, 0, 1, 'Sentrius IG60'))
-        obj3.add_multi_resource(LwM2MResourceInst(3, 0, 6, 0, 0))
-        obj3.add_multi_resource(LwM2MResourceInst(3, 0, 6, 1, 1))
-        time_resource = LwM2MResourceValue(3, 0, 13, datetime.now())
-        loop.create_task(update_time(time_resource))
-        obj3.add_resource(time_resource)
-        obj3.add_resource(LwM2MResourceValue(3, 0, 14, 'UTC+0500'))
-        obj3.add_resource(LwM2MResourceValue(3, 0, 15, 'EST'))
-        client.add_object(obj3)
+        # Add IG60 Device object
+        client.add_object(IG60DeviceObject())
         # Add IG60 firmware update object
         client.add_object(IG60FWUpdateObject())
         loop.run_forever()
