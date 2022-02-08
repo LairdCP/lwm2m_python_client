@@ -107,8 +107,13 @@ class TlvEncoder(object):
     @staticmethod
     def pack_resource_value(res):
         """Return the packed TLV representation of a resource value"""
-        logger.debug(f'Packing resource value {res.get_desc()}')
-        return TlvEncoder.encode_tlv(TlvType.RESOURCE_VALUE, res.get_id(), res.get_value())
+        val = res.get_value()
+        if val is not None:
+            logger.debug(f'Packing resource value {res.get_desc()}')
+            return TlvEncoder.encode_tlv(TlvType.RESOURCE_VALUE, res.get_id(), res.get_value())
+        else:
+            logger.debug(f'Skipping empty resource value {res.get_desc()}')
+            return b''
 
     @staticmethod
     def get_resource_value(res):

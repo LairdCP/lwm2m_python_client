@@ -10,6 +10,8 @@ import argparse
 from lwm2m.client import LwM2MClient
 from ig60_device import IG60DeviceObject
 from ig60_fwupdate import IG60FWUpdateObject
+from ig60_network import IG60Network
+from ig60_connmon import IG60ConnectionMonitor
 
 if __name__ == '__main__':
     # Default to bind to local address & port
@@ -35,8 +37,12 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.create_task(client.start())
     try:
+        # Create IG60 Network interface helper
+        ig60net = IG60Network()
         # Add IG60 Device object
         client.add_object(IG60DeviceObject())
+        # Add IG60 Connection Monitor
+        client.add_object(IG60ConnectionMonitor(ig60net, args.address))
         # Add IG60 firmware update object
         client.add_object(IG60FWUpdateObject())
         loop.run_forever()
