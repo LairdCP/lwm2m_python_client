@@ -13,7 +13,7 @@ from ig60_fwupdate import IG60FWUpdateObject
 from ig60_network import IG60Network
 from ig60_connmon import IG60ConnectionMonitor
 
-if __name__ == '__main__':
+def run_client():
     # Default to bind to local address & port
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', '--address', default='127.0.0.1', help='Local address to bind')
@@ -49,3 +49,6 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         loop.close()
         exit(0)
+
+if __name__ == '__main__':
+    run_client()
