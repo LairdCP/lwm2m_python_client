@@ -12,6 +12,7 @@ from ig60_device import IG60DeviceObject
 from ig60_fwupdate import IG60FWUpdateObject
 from ig60_network import IG60Network
 from ig60_connmon import IG60ConnectionMonitor
+from ig60_cellular import IG60Cellular, IG60APNProfile
 
 def run_client():
     # Default to bind to local address & port
@@ -45,6 +46,10 @@ def run_client():
         client.add_object(IG60ConnectionMonitor(ig60net, args.address))
         # Add IG60 firmware update object
         client.add_object(IG60FWUpdateObject())
+        if len(ig60net.get_ofono_lte_props()) > 0:
+            # LTE modem is present, add Cellular and APN objects
+            client.add_object(IG60Cellular(ig60net))
+            client.add_object(IG60APNProfile(ig60net))
         loop.run_forever()
     except KeyboardInterrupt:
         loop.close()

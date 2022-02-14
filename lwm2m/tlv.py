@@ -35,6 +35,22 @@ def needs_bytes(n): return 1 if n == 0 else int(log(abs(n), 256)) + 1
 def hexdump(obj):
     return ''.join('{:02X} '.format(a) for a in obj)
 
+class ObjLink(object):
+    """Class used to encode LwM2M object links
+    """
+    def __init__(self, obj_id, obj_inst):
+        self.obj_id = obj_id
+        self.obj_inst = obj_inst
+
+    def encode_tlv(self):
+        """Encode this object link as a TLV"""
+        return pack('>HH', self.obj_id, self.obj_inst)
+
+    @staticmethod
+    def decode_tlv(_bytes):
+        (obj_id, obj_inst) = unpack('>HH', _bytes)
+        return ObjLink(obj_id, obj_inst)
+
 class TlvEncoder(object):
     """Base class for TLV encoding
     
@@ -66,6 +82,8 @@ class TlvEncoder(object):
             _payload = TlvEncoder.encode_value(int(v.timestamp()))
         elif _type == 'bytes':
             _payload = v
+        elif _type == 'ObjLink':
+            _payload = v.encode_tlv()
         else:
             raise TypeError(
                 f'unknown value type: {_type}. Must be one of (int,str,float,bool,datetime,bytes)')
@@ -196,6 +214,8 @@ class TlvDecoder(object):
             return datetime.utcfromtimestamp(int.from_bytes(_bytes, byteorder='big', signed=True))
         elif _type == 'bytes':
             return _bytes
+        elif _type == 'ObjLink':
+            return ObjLink.decode_tlv(_bytes)
         raise TypeError(
             f'unknown value for type {_type}: Must be one of (int,str,float,bool,datetime,bytes)')
 

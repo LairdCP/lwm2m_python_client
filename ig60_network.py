@@ -54,6 +54,7 @@ OFONO_MODEM_IFACE = 'org.ofono.Modem'
 OFONO_NETREG_IFACE = 'org.ofono.NetworkRegistration'
 OFONO_CONNMAN_IFACE = 'org.ofono.ConnectionManager'
 OFONO_CONNECTION_IFACE = 'org.ofono.ConnectionContext'
+OFONO_LTE_IFACE = 'org.ofono.LongTermEvolution'
 
 log = logging.getLogger('ig60network')
 
@@ -151,3 +152,33 @@ class IG60Network():
         """Return an Ofono Connection property as an string"""
         val = self.get_ofono_conn_props().get(prop)
         return str(val) if val is not None else default
+
+    def get_ofono_lte_props(self):
+        """Return Ofono LTE properties"""
+        try:
+            modems = self.ofono.GetModems()
+            lte = dbus.Interface(self.bus.get_object(OFONO_BUS_NAME,
+                modems[0][0]), OFONO_LTE_IFACE)
+            lte_props = lte.GetProperties()
+            return lte_props
+        except:
+            return {}
+
+    def get_ofono_lte_prop_str(self, prop, default = None):
+        """Return an Ofono LTE property as a string"""
+        log.debug(f'Getting Ofono LTE property {prop}')
+        val = self.get_ofono_lte_props().get(prop)
+        return str(val) if val is not None else default
+
+    def set_ofono_lte_prop(self, prop, value):
+        """Set an Ofono LTE property"""
+        try:
+            modems = self.ofono.GetModems()
+            lte = dbus.Interface(self.bus.get_object(OFONO_BUS_NAME,
+                modems[0][0]), OFONO_LTE_IFACE)
+            log.debug(f'Setting Ofono LTE property {prop} to {value}')
+            lte.SetProperty(prop, value)
+            return True
+        except Exception as e:
+            log.error(f'Failed to set Ofono LTE property {prop}: {e}')
+            return False
