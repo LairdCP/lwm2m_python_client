@@ -78,8 +78,8 @@ class LwM2MObjectInst(LwM2MBase):
 
     def build_site(self, site):
         """Add CoAP resource link to this object instance and its resources"""
-        site.add_resource((str(self.obj_id), str(self.obj_inst)), self)
         log.debug(f'{self.obj_id}/{self.obj_inst} -> {self.desc}')
+        site.add_resource((str(self.obj_id), str(self.obj_inst)), self)
         for res_id, res in self.resources.items():
             res.build_site(site)
 
@@ -125,6 +125,7 @@ class LwM2MBaseObject(LwM2MBase):
 
     def remove_obj_inst(self, obj_inst):
         self.instances.pop(obj_inst, None)
+        self.notify_site_changed()
         return bool(self.instances)
 
     def get_id(self):
@@ -165,4 +166,7 @@ class LwM2MBaseObject(LwM2MBase):
         links = []
         for obj in self.instances.values():
             links.append(obj.get_object_link())
+        # Add base link if no instances are present
+        if len(links) == 0:
+            links.append(f'</{self.obj_id}>')
         return links

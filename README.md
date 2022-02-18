@@ -69,3 +69,25 @@ calls an external shell script (``ig60_fw_update.sh``) passing the path of the f
 single argument to the script.  This source includes an implementation of the script which will apply
 the update image as an swupdate package and change the bootside in U-Boot once the update has
 been successfully applied.  (The update script must be in the ``PATH`` to be executed).
+
+### Cellular Connectivity (Object 10) and APN Profile (Object 11)
+The IG60 LwM2M client will expose the cellular connectivity status (object 10) and APN profile (object 11)
+if the IG60 LTE modem is present and has been activated.  The status will always report a single APN profile
+instance (/11/0 when activated).  This single instance of the APN profile only supports setting the
+preferred APN and authentication settings (via the Ofono LTE interface).
+
+### WLAN Connectivity Profiles (Object 12)
+The IG60 LwM2M client provides the WLAN connectivity profiles via object 12.  This object supports
+creating, writing, reading, and deleting WLAN connections, which are mapped to Network Manager connections
+on the IG60 wireless interface (wlan0).  The following resource settings and their corresponding Network
+Manager settings are provided:
+* Interface name (0): Must be 'wlan0'
+* Enable (1): Sets the Network Manager 'autoconnect' setting (True to enable, False to disable)
+* Status (3): Reports the connection status when read
+* BSSID (4): Reports the WLAN0 MAC address when read
+* SSID (5): Set to the connection SSID (note that per the LwM2M specification this is a string, so non-ASCII characters cannot be supported)
+* Mode (8): Can be set but only Client (1) is supported
+* Channel (9): Sets the Network Manager 'channel' setting
+* Standard (14): Can be set but is ignored; the WLAN interface supports 802.11ac
+* Authentication mode (15): Only None (0) and PSK (1) are supported (since the LwM2M specification does not provide the ability to configure EAP credentials)
+* WPA Key Phrase (18): The PSK used when authentication is set to PSK

@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import re
 
 # Import DBus/Glib stuff conditionally to allow development platforms
 # (e.g., PC) to run (without the network functionality)
@@ -26,6 +27,7 @@ NM_OBJ = '/org/freedesktop/NetworkManager'
 NM_DEVICE_IFACE = 'org.freedesktop.NetworkManager.Device'
 DBUS_PROP_IFACE = 'org.freedesktop.DBus.Properties'
 NM_CONNECTION_ACTIVE_IFACE = 'org.freedesktop.NetworkManager.Connection.Active'
+NM_CONNECTION_SETTINGS_IFACE = 'org.freedesktop.NetworkManager.Settings.Connection'
 NM_IP4_CONFIG_IFACE = 'org.freedesktop.NetworkManager.IP4Config'
 NM_IP6_CONFIG_IFACE = 'org.freedesktop.NetworkManager.IP6Config'
 
@@ -40,11 +42,19 @@ NM_ACTIVE_CONNECTION_STATE_DEACTIVATED = 4
 NM_PROP_ACTIVE_CONNECTIONS = 'ActiveConnections'
 NM_PROP_CONN_STATE = 'State'
 NM_PROP_CONN_DEVICES = 'Devices'
+NM_PROP_CONN_ID = 'Id'
 NM_PROP_DEVICE_INTERFACE = 'Interface'
 NM_PROP_IP4_CONFIG = 'Ip4Config'
 NM_PROP_IP6_CONFIG = 'Ip6Config'
 NM_PROP_IP_ADDR_DATA = 'AddressData'
 NM_KEY_ADDRESS = 'address'
+
+# Network Manager Connection Settings
+NM_SETTINGS_CONNECTION = 'connection'
+NM_SETTINGS_ID = 'id'
+NM_SETTINGS_IFACE_NAME = 'interface-name'
+NM_SETTINGS_WIRELESS = '802-11-wireless'
+NM_SETTINGS_WIRELESS_SECURITY = '802-11-wireless-security'
 
 # Ofono D-Bus objects
 OFONO_ROOT_PATH = '/'
@@ -86,6 +96,7 @@ class IG60Network():
                 dev_props = dbus.Interface(self.bus.get_object(NM_IFACE,
                     conn_props.Get(NM_CONNECTION_ACTIVE_IFACE, NM_PROP_CONN_DEVICES)[0]), DBUS_PROP_IFACE)
                 iface = str(dev_props.Get(NM_DEVICE_IFACE, NM_PROP_DEVICE_INTERFACE))
+                conn_id = str(conn_props.Get(NM_CONNECTION_ACTIVE_IFACE, NM_PROP_CONN_ID))
                 if conn_state == NM_ACTIVE_CONNECTION_STATE_ACTIVATED:
                     ip4_props = dbus.Interface(self.bus.get_object(NM_IFACE,
                         conn_props.Get(NM_CONNECTION_ACTIVE_IFACE, NM_PROP_IP4_CONFIG)),
@@ -101,7 +112,7 @@ class IG60Network():
                     a6_addresses = []
                     for a6 in a6addr_data:
                         a6_addresses.append(str(a6[NM_KEY_ADDRESS]))
-                    conns.append((iface, a4_addresses, a6_addresses,))
+                    conns.append((iface, conn_id, a4_addresses, a6_addresses,))
         except Exception as e:
             log.warn(f'Failed to parse connections over D-Bus: {e}')
         return conns
@@ -110,10 +121,10 @@ class IG60Network():
         """Find the interface name that matches a given IP address"""
         conns = self.get_available_connections()
         for c in conns:
-            for a4 in c[1]:
+            for a4 in c[2]:
                 if a4 == addr:
                     return c[0]
-            for a6 in c[2]:
+            for a6 in c[3]:
                 if a6 == addr:
                     return c[0]
         return ''
@@ -182,3 +193,69 @@ class IG60Network():
         except Exception as e:
             log.error(f'Failed to set Ofono LTE property {prop}: {e}')
             return False
+
+    def get_hw_addr(self, iface):
+        iface_dev_obj = self.bus.get_object(NM_IFACE, self.nm.GetDeviceByIpIface(iface))
+        iface_props = dbus.Interface(iface_dev_obj, DBUS_PROP_IFACE)
+        iface_addr = iface_props.GetAll(NM_DEVICE_IFACE)['HwAddress'].lower()
+        return re.sub(':', '', iface_addr)
+
+    def get_connections_by_iface(self, iface):
+        """Get list of all connection ids for an interface"""
+        ret = []
+        conns = self.nm_settings.ListConnections()
+        for c_obj in conns:
+            c = dbus.Interface(self.bus.get_object(NM_IFACE, c_obj),
+                NM_CONNECTION_SETTINGS_IFACE)
+            settings = c.GetSettings()
+            if settings[NM_SETTINGS_CONNECTION].get(NM_SETTINGS_IFACE_NAME) == iface:
+                ret.append(str(settings[NM_SETTINGS_CONNECTION][NM_SETTINGS_ID]))
+        return ret
+
+    def get_nm_conn_settings(self, conn_id):
+        """Get the settings for a connection by name"""
+        conns = self.nm_settings.ListConnections()
+        for c_path in conns:
+            c = dbus.Interface(self.bus.get_object(NM_IFACE, c_path),
+                NM_CONNECTION_SETTINGS_IFACE)
+            settings = c.GetSettings()
+            if settings[NM_SETTINGS_CONNECTION][NM_SETTINGS_ID] == conn_id:
+                # Merge in WLAN 'secret' settings
+                if NM_SETTINGS_WIRELESS_SECURITY in settings:
+                    secrets = c.GetSecrets(NM_SETTINGS_WIRELESS_SECURITY)
+                    if NM_SETTINGS_WIRELESS_SECURITY in secrets:
+                        settings[NM_SETTINGS_WIRELESS_SECURITY].update(
+                            secrets[NM_SETTINGS_WIRELESS_SECURITY]
+                        )
+                return settings
+        return None
+
+    def add_or_modify_wlan_connection(self, settings):
+        conn_id = settings[NM_SETTINGS_CONNECTION][NM_SETTINGS_ID]
+        try:
+            conns = self.nm_settings.ListConnections()
+            for c_path in conns:
+                c = dbus.Interface(self.bus.get_object(NM_IFACE, c_path),
+                        NM_CONNECTION_SETTINGS_IFACE)
+                if c.GetSettings()[NM_SETTINGS_CONNECTION][NM_SETTINGS_ID] == conn_id:
+                    log.info(f'Updating wireless config {conn_id}')
+                    c.Update(settings)
+                    return
+            # ID not found, so create a connection
+            log.info(f'Adding wireless config {conn_id}')
+            conn = self.nm_settings.AddConnection(settings)
+        except Exception as e:
+            log.error(f'Failed to create or modify connection: {e}')
+
+    def delete_wlan_connection(self, conn_id):
+        try:
+            conns = self.nm_settings.ListConnections()
+            for c_path in conns:
+                c = dbus.Interface(self.bus.get_object(NM_IFACE, c_path),
+                        NM_CONNECTION_SETTINGS_IFACE)
+                if c.GetSettings()[NM_SETTINGS_CONNECTION][NM_SETTINGS_ID] == conn_id:
+                    log.info(f'Deleting wireless config {conn_id}')
+                    c.Delete()
+                    return
+        except Exception as e:
+            log.error(f'Failed to delete connection: {e}')

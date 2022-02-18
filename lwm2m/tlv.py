@@ -307,7 +307,7 @@ class TlvDecoder(object):
             return Message(code=Code.BAD_REQUEST)
 
     @staticmethod
-    def update_object(request, obj_inst):
+    def update_object(request, obj_inst, success_code = Code.CHANGED):
         """Update resources of an object instance from a TLV-encoded CoAP message"""
         if request.opt.content_format != MediaType.TLV.value:
             logger.error(f'Invalid content format: {request.opt.content_format}')
@@ -332,7 +332,7 @@ class TlvDecoder(object):
                     logger.debug(f'Skipping optional resource {res_id}')
             logger.debug(f'Updating object with {resources}')
             obj_inst.update(resources)
-            return Message(code=Code.CHANGED)
+            return Message(code=success_code)
         except Exception as e:
             logger.error(f'Failed to decode resource: {e}')
             return Message(code=Code.BAD_REQUEST)

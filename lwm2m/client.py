@@ -47,7 +47,8 @@ class LwM2MClient(Site):
     """LwM2M client implementation"""
 
     def __init__(self, address, port, bootstrap_address, bootstrap_port,
-        bootstrap_psk, server_address, server_port, server_psk, endpoint, **kwargs):
+        bootstrap_psk, server_address, server_port, server_psk, endpoint,
+        lifetime, **kwargs):
         super(LwM2MClient, self).__init__()
         self.address = address
         self.port = port
@@ -58,9 +59,11 @@ class LwM2MClient(Site):
         self.server_port = server_port
         self.server_psk = bytes.fromhex(server_psk)
         self.endpoint = endpoint
-        self.lifetime = 3600
+        self.lifetime = lifetime
         self.binding_mode = 'U'
         self.objects = {}
+        self.running = True
+        self.register_event = asyncio.Event()
         self.bootstrap_finish_event = asyncio.Event()
         # Create endpoint for bootstrap-finish
         self.bootstrap_finish = LwM2MBootstrapFinish(self, self.bootstrap_finish_event)
@@ -151,51 +154,60 @@ class LwM2MClient(Site):
             self.lifetime  = lifetime
         self.server_psk = self.security_base.get_psk()
 
-    async def register(self):
-        """Perform initial LwM2M client registration"""
-        request = Message(code=Code.POST, payload=','.join(
-            self.get_reg_links()).encode(),
+    async def register(self, is_update=False, update_objects=False):
+        """Send LwM2M client registration"""
+        request = Message(code=Code.POST,
             uri=f'coap{"s" if self.server_psk else ""}://{self.server_address}:{self.server_port}'
         )
         request.opt.uri_host = self.server_address
         request.opt.uri_port = self.server_port
-        request.opt.uri_path = ('rd',)
-        request.opt.uri_query = (
-            f'ep={self.endpoint}', f'b={self.binding_mode}', f'lt={self.lifetime}', 'lwm2m=1.0')
-        log.debug('Initial registration to {}:{} payload={} query={}'.format(request.opt.uri_host, request.opt.uri_port, request.payload.decode(), request.opt.uri_query))
+        # Use our registration path after initial registration
+        if is_update or update_objects:
+            request.opt.uri_path = ('rd', self.rd_resource,)
+        else:
+            request.opt.uri_path = ('rd',)
+        # Include endpoint information on initial registration
+        if not is_update:
+            request.opt.uri_query = (
+                f'ep={self.endpoint}', f'b={self.binding_mode}', f'lt={self.lifetime}', 'lwm2m=1.0')
+        # Send objects on initial registration or when objects are updated
+        if update_objects or not is_update:
+            request.payload = ','.join(self.get_reg_links()).encode()
+        log.debug('Registration to {}:{} payload={} query={}'.format(request.opt.uri_host, request.opt.uri_port, request.payload.decode(), request.opt.uri_query))
         response = await self.context.request(request).response
 
-        # expect ACK
-        if response.code != Code.CREATED:
+        # Check for success
+        if not response.code.is_successful():
             raise BaseException(
                 f'unexpected code received: {response.code}. Unable to register!')
 
         # we receive resource path ('rd', 'xyz...')
-        self.rd_resource = response.opt.location_path[1]
-        log.info(f'client registered at location {self.rd_resource}')
-        if self.lifetime > 0:
-            await asyncio.sleep(self.lifetime - 1)
-            asyncio.ensure_future(self.update_register())
+        if not is_update:
+            self.rd_resource = response.opt.location_path[1]
+            log.info(f'client registered at location {self.rd_resource}')
 
-    async def update_register(self):
-        """Update LwM2M client registration"""
-        log.debug('update_register()')
-        update = Message(code=Code.POST, uri=f'coap{"s" if self.server_psk else ""}://{self.server_address}:{self.server_port}')
-        update.opt.uri_host = self.server_address
-        update.opt.uri_port = self.server_port
-        update.opt.uri_path = ('rd', self.rd_resource)
-        response = await self.context.request(update).response
-        if response.code != Code.CHANGED:
-            # error while update, fallback to re-register
-            log.warning(
-                f'failed to update registration, code {response.code}, falling back to registration')
-            asyncio.ensure_future(self.register())
-        else:
-            log.info(f'updated registration for {self.rd_resource}')
-            # yield to next update - 1 sec
-            if self.lifetime > 0:
-                await asyncio.sleep(self.lifetime - 1)
-                asyncio.ensure_future(self.update_register())
+    async def registration_task(self):
+        """Task that updates LwM2M client registration"""
+        log.debug('registration_task()')
+        # Send initial registration
+        await self.register(False, False)
+        while self.running:
+            # Await timeout or event signalling object changes
+            try:
+                await asyncio.wait_for(self.register_event.wait(), self.lifetime)
+                if self.register_event.is_set():
+                    self.register_event.clear()
+                    # Object change, re-register object list
+                    self.build_site()
+                    await self.register(True, True)
+            except asyncio.TimeoutError as e:
+                # No change, update registration on timeout
+                await self.register(True, False)
+
+    def client_updated(self):
+        """Client was updated, register new objects and resources"""
+        # Trigger registration task to update objects
+        self.register_event.set()
 
     async def start(self):
         """Start and run the LwM2M client"""
@@ -213,4 +225,5 @@ class LwM2MClient(Site):
             )
         else:
             self.context = await Context.create_server_context(self, bind=(self.address, self.port))
-        await self.register()
+        # Start registration task
+        asyncio.ensure_future(self.registration_task())

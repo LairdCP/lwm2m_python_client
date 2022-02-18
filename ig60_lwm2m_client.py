@@ -13,6 +13,8 @@ from ig60_fwupdate import IG60FWUpdateObject
 from ig60_network import IG60Network
 from ig60_connmon import IG60ConnectionMonitor
 from ig60_cellular import IG60Cellular, IG60APNProfile
+from ig60_wlan import IG60WLANProfileBase
+from lwm2m.wlan import LWM2M_WLAN_OBJECT
 
 def run_client():
     # Default to bind to local address & port
@@ -26,6 +28,7 @@ def run_client():
     parser.add_argument('-sp', '--server-port', type=int, default=5684, help='Port of L2M2M server')
     parser.add_argument('-sk', '--server-psk', default='', help='PSK for DTLS-enabled bootstrap server (hex)')
     parser.add_argument('-e', '--endpoint', default='python-client', help='L2M2M Endpoint')
+    parser.add_argument('-l', '--lifetime', type=int, default=3600, help='Client lifetime')
     parser.add_argument('-d', '--debug', action='store_true', help='Set debug logging')
     args = parser.parse_args()
     if args.debug:
@@ -50,6 +53,11 @@ def run_client():
             # LTE modem is present, add Cellular and APN objects
             client.add_object(IG60Cellular(ig60net))
             client.add_object(IG60APNProfile(ig60net))
+        # Add WLAN Profile base object (it will populate instances)
+        ig60wlan = IG60WLANProfileBase(ig60net)
+        # Callback to client to re-register when instances change
+        ig60wlan.site_changed(client.client_updated)
+        client.add_base_object(LWM2M_WLAN_OBJECT, ig60wlan)
         loop.run_forever()
     except KeyboardInterrupt:
         loop.close()
