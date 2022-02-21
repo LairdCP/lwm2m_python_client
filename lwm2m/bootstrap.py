@@ -56,10 +56,15 @@ class LwM2MSecurityBaseObject(LwM2MBaseObject):
 
     def __init__(self):
         super(LwM2MSecurityBaseObject, self).__init__(LWM2M_SECURITY_OBJECT)
+        # Create default instances for server and bootstrap server
+        self.add_obj_inst(LwM2MSecurityObject(LWM2M_SECURITY_BOOTSTRAP_INSTANCE))
+        self.add_obj_inst(LwM2MSecurityObject(LWM2M_SECURITY_SERVER_INSTANCE))
 
     async def render_delete(self, request):
         log.debug(f'{self.desc}: DELETE')
-        # Create default instance (/0/1) to receive bootstrap-write (PUT)
+        self.instances = {}
+        # Create default instances for server and bootstrap server
+        self.add_obj_inst(LwM2MSecurityObject(LWM2M_SECURITY_BOOTSTRAP_INSTANCE))
         self.add_obj_inst(LwM2MSecurityObject(LWM2M_SECURITY_SERVER_INSTANCE))
         self.notify_site_changed()
         return Message(code=Code.DELETED)
@@ -90,9 +95,12 @@ class LwM2MServerBaseObject(LwM2MBaseObject):
 
     def __init__(self):
         super(LwM2MServerBaseObject, self).__init__(LWM2M_SERVER_OBJECT)
+        # Create default instance (/1/0) to receive bootstrap-write (PUT)
+        self.add_obj_inst(LwM2MServerObject(LWM2M_SERVER_INSTANCE))
 
     async def render_delete(self, request):
         log.debug(f'{self.desc}: DELETE')
+        self.instances = {}
         # Create default instance (/1/0) to receive bootstrap-write (PUT)
         self.add_obj_inst(LwM2MServerObject(LWM2M_SERVER_INSTANCE))
         self.notify_site_changed()
