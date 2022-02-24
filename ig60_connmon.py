@@ -25,19 +25,19 @@ IFACE_WLAN = 'wlan'
 IFACE_LTE = 'usb'
 
 class IG60CurrentBearerResource(LwM2MResourceValue):
-    """Resource that reports the current network bearer based on bind address"""
+    """Resource that reports the current network bearer based on interface"""
 
-    def __init__(self, ig60net, addr):
+    def __init__(self):
         super(IG60CurrentBearerResource, self).__init__(LWM2M_CONNMON_OBJECT, LWM2M_CONNMON_INSTANCE, LWM2M_CONNMON_RESOURCE_NET_BEARER, 0)
-        self.ig60net = ig60net
-        self.addr = addr
+
+    def update_bind(self, iface, addr):
+        self.iface = iface
 
     def get_value(self):
-        iface = self.ig60net.find_iface_by_addr(self.addr)
-        if iface.startswith(IFACE_LTE):
+        if self.iface.startswith(IFACE_LTE):
             # Gemalto PLS62-W is FDD only
             return LWM2M_CONNMON_BEARER_LTE_FDD
-        elif iface.startswith(IFACE_WLAN):
+        elif self.iface.startswith(IFACE_WLAN):
             return LWM2M_CONNMON_BEARER_WLAN
         else:
             return LWM2M_CONNMON_BEARER_ETHERNET
@@ -119,14 +119,21 @@ class IG60ConnectionMonitor(LwM2MObjectInst):
     """Object 4 (Connection Monitoring) implementation for IG60
     """
 
-    def __init__(self, ig60net, addr):
+    def __init__(self, ig60net):
         super(IG60ConnectionMonitor, self).__init__(LWM2M_CONNMON_OBJECT, LWM2M_CONNMON_INSTANCE)
-        self.add_resource(IG60CurrentBearerResource(ig60net, addr))
+        self.res_bearer = IG60CurrentBearerResource()
+        self.add_resource(self.res_bearer)
         self.add_resource(IG60AvailableBearersResource(ig60net))
-        self.add_resource(LwM2MResourceValue(LWM2M_CONNMON_OBJECT, LWM2M_CONNMON_INSTANCE, LWM2M_CONNMON_RESOURCE_IP_ADDRESSES, addr))
+        self.res_ip_addr = LwM2MResourceValue(LWM2M_CONNMON_OBJECT, LWM2M_CONNMON_INSTANCE, LWM2M_CONNMON_RESOURCE_IP_ADDRESSES, '')
+        self.add_resource(self.res_ip_addr)
         self.add_resource(IG60OfonoRSSIResource(ig60net))
         self.add_resource(IG60OfonoNetPropertyIntResource(LWM2M_CONNMON_RESOURCE_CELLID, ig60net, OFONO_PROP_CELLID))
         self.add_resource(IG60OfonoNetPropertyIntResource(LWM2M_CONNMON_RESOURCE_SMNC,  ig60net, OFONO_PROP_MNC))
         self.add_resource(IG60OfonoNetPropertyIntResource(LWM2M_CONNMON_RESOURCE_SMCC,  ig60net, OFONO_PROP_MCC))
         self.add_resource(IG60OfonoNetPropertyIntResource(LWM2M_CONNMON_RESOURCE_LAC,  ig60net, OFONO_PROP_LAC))
         self.add_resource(IG60OfonoConnPropertyStrResource(LWM2M_CONNMON_RESOURCE_APN,  ig60net, OFONO_PROP_APN))
+
+    def update_bind(self, iface, addr):
+        """Update binding interface and address"""
+        self.res_bearer.update_bind(iface, addr)
+        self.res_ip_addr.value = addr

@@ -91,3 +91,24 @@ Manager settings are provided:
 * Standard (14): Can be set but is ignored; the WLAN interface supports 802.11ac
 * Authentication mode (15): Only None (0) and PSK (1) are supported (since the LwM2M specification does not provide the ability to configure EAP credentials)
 * WPA Key Phrase (18): The PSK used when authentication is set to PSK
+
+### Bearer Selection (Object 13)
+The IG60 LwM2M client exposes the Bearer Selection object to control
+the priority list of network interfaces that are used by the client
+to connect to the server (where the lowest instance ID has the
+highest priority).  This object only implements resource 0,
+"Preferred Communications Bearer".  By default this resource contains
+a single instance of "0: Auto", which indicates the client should
+connect on one of the 3 available interfaces (Ethernet, WLAN, or
+LTE).
+
+If this resource is written with one or more instances, the priority of
+the instances will be observed and the client will attempt to re-register
+with the server on the interface with the highest priority, then the
+next (if the connection cannot be established), etc.  Only the following
+resource values will be observed (any others will be ignored):
+
+* 0: Auto (default)
+* 4: 3GPP LTE
+* 7: WLAN
+* 8: Ethernet

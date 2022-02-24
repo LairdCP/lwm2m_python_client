@@ -247,7 +247,7 @@ class TlvDecoder(object):
 
     @staticmethod
     def update_resource_value(request, res):
-        """Update a resource value from a TLV-encoded CoAP message"""
+        """Update a resource value or instance from a TLV-encoded CoAP message"""
         if request.opt.content_format != MediaType.TLV.value:
             logger.error(f'Invalid content format: {request.opt.content_format}')
             return Message(code=Code.NOT_ACCEPTABLE)
@@ -256,8 +256,8 @@ class TlvDecoder(object):
         except:
             logger.error('Failed to decode TLV')
             return Message(code=Code.BAD_REQUEST)
-        if tlv_type != TlvType.RESOURCE_VALUE.value:
-            logger.error(f'Invalid TLV type: {_type}')
+        if tlv_type != TlvType.RESOURCE_VALUE.value and tlv_type != TlvType.RESOURCE_INSTANCE.value:
+            logger.error(f'Invalid TLV type: {tlv_type}')
             return Message(code=Code.BAD_REQUEST)
         if id != res.get_id():
             logger.error(f'Invalid id type: {id}')
@@ -279,7 +279,7 @@ class TlvDecoder(object):
             tlv_type, inst, value_bytes, payload = TlvDecoder.decode_tlv(payload)
             if tlv_type != TlvType.RESOURCE_INSTANCE.value:
                 raise Exception(f'Invalid TLV type: {tlv_type}')
-            newval = TlvDecoder.decode_value(res_type, payload)
+            newval = TlvDecoder.decode_value(res_type, value_bytes)
             instances[inst] = newval
         return instances
 
@@ -288,18 +288,18 @@ class TlvDecoder(object):
         if request.opt.content_format != MediaType.TLV.value:
             raise Exception(f'Invalid content format: {request.opt.content_format}')
         try:
-            tlv_type, id, inst_payload = TlvDecoder.decode_tlv(request.payload)
+            tlv_type, res_id, value_bytes, payload = TlvDecoder.decode_tlv(request.payload)
         except:
             logger.error('Failed to decode TLV')
             return Message(code=Code.BAD_REQUEST)
         if tlv_type != TlvType.MULTIPLE_RESOURCE.value:
             raise Exception(f'Invalid TLV type: {tlv_type}')
-        if id != multi_res.get_id():
-            raise Exception(f'Invalid id: {id}')
+        if res_id != multi_res.get_id():
+            raise Exception(f'Invalid id: {res_id}')
         try:
             # Decode/validate all instances before changing the object
-            instances = TlvDecoder.decode_multi_resource(multi_res.get_type(), inst_payload)
-            logger.debug(f'Updating multi-resource {id} with {instances}')
+            instances = TlvDecoder.decode_multi_resource(multi_res.get_type(), value_bytes)
+            logger.debug(f'Updating multi-resource {res_id} with {instances}')
             multi_res.update(instances)
             return Message(code=Code.CHANGED)
         except Exception as e:

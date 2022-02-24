@@ -46,12 +46,10 @@ class LwM2MBootstrapFinish(LwM2MBase):
 class LwM2MClient(Site):
     """LwM2M client implementation"""
 
-    def __init__(self, address, port, bootstrap_address, bootstrap_port,
-        bootstrap_psk, server_address, server_port, server_psk, endpoint,
-        lifetime, **kwargs):
+    def __init__(self, bootstrap_address, bootstrap_port,
+            bootstrap_psk, server_address, server_port, server_psk, endpoint,
+            lifetime, **kwargs):
         super(LwM2MClient, self).__init__()
-        self.address = address
-        self.port = port
         self.bootstrap_address = bootstrap_address
         self.bootstrap_port = bootstrap_port
         self.bootstrap_psk = bytes.fromhex(bootstrap_psk)
@@ -65,6 +63,7 @@ class LwM2MClient(Site):
         self.running = True
         self.register_event = asyncio.Event()
         self.bootstrap_finish_event = asyncio.Event()
+        self.context = None
         # Create endpoint for bootstrap-finish
         self.bootstrap_finish = LwM2MBootstrapFinish(self, self.bootstrap_finish_event)
         self.add_base_object('bs', self.bootstrap_finish)
@@ -124,35 +123,38 @@ class LwM2MClient(Site):
         request = Message(code=Code.POST, uri=bootstrap_uri)
         response = await context.request(request).response
         if response.code != Code.CHANGED:
-            raise BaseException(
-                f'unexpected code received: {response.code}. Unable to register!')
+            raise error.ConstructionRenderableError(response)
 
-    async def client_bootstrap(self):
+    async def client_bootstrap(self, address, port):
         """Perform client bootstrap"""
-        if self.bootstrap_psk:
-            bs_context = await DtlsContext.create_server_context(self, bind=(self.address, self.port))
-            bs_context.client_credentials.load_from_dict(
-                { f'*' : { 'dtls' : {
-                    'psk' : self.bootstrap_psk,
-                    'client-identity' : self.endpoint.encode()
-                }}}
-            )
-        else:
-            bs_context = await Context.create_server_context(self, bind=(self.address, self.port))
-        await self.bootstrap_request(bs_context)
-        await self.bootstrap_finish_event.wait()
-        await bs_context.shutdown()
-        # Obtain bootstrap config to client
-        server_uri = self.security_base.get_server_uri()
-        log.info(f'L2M2M server URI after bootstrap: {server_uri}')
-        u = urlparse(server_uri)
-        self.server_address = u.hostname
-        self.server_port = u.port
-        lifetime = self.server_base.get_lifetime()
-        if lifetime > 0:
-            log.info(f'Client lifetime is now {lifetime}')
-            self.lifetime  = lifetime
-        self.server_psk = self.security_base.get_psk()
+        bs_context = None
+        try:
+            if self.bootstrap_psk:
+                bs_context = await DtlsContext.create_server_context(self, bind=(address, port))
+                bs_context.client_credentials.load_from_dict(
+                    { f'*' : { 'dtls' : {
+                        'psk' : self.bootstrap_psk,
+                        'client-identity' : self.endpoint.encode()
+                    }}}
+                )
+            else:
+                bs_context = await Context.create_server_context(self, bind=(address, port))
+            await self.bootstrap_request(bs_context)
+            await self.bootstrap_finish_event.wait()
+            # Obtain bootstrap config to client
+            server_uri = self.security_base.get_server_uri()
+            log.info(f'L2M2M server URI after bootstrap: {server_uri}')
+            u = urlparse(server_uri)
+            self.server_address = u.hostname
+            self.server_port = u.port
+            lifetime = self.server_base.get_lifetime()
+            if lifetime > 0:
+                log.info(f'Client lifetime is now {lifetime}')
+                self.lifetime  = lifetime
+            self.server_psk = self.security_base.get_psk()
+        finally:
+            if bs_context:
+                await bs_context.shutdown()
 
     async def register(self, is_update=False, update_objects=False):
         """Send LwM2M client registration"""
@@ -178,8 +180,7 @@ class LwM2MClient(Site):
 
         # Check for success
         if not response.code.is_successful():
-            raise BaseException(
-                f'unexpected code received: {response.code}. Unable to register!')
+            raise error.ConstructionRenderableError(response)
 
         # we receive resource path ('rd', 'xyz...')
         if not is_update:
@@ -197,6 +198,8 @@ class LwM2MClient(Site):
                 await asyncio.wait_for(self.register_event.wait(), self.lifetime)
                 if self.register_event.is_set():
                     self.register_event.clear()
+                    if not self.running:
+                        return
                     # Object change, re-register object list
                     self.build_site()
                     await self.register(True, True)
@@ -209,21 +212,33 @@ class LwM2MClient(Site):
         # Trigger registration task to update objects
         self.register_event.set()
 
-    async def start(self):
+    async def start(self, address, port):
         """Start and run the LwM2M client"""
-        self.build_site()
-        if self.bootstrap_address and self.bootstrap_port:
-            # Perform bootstrap before starting client
-            await self.client_bootstrap()
-        if self.server_psk:
-            self.context = await DtlsContext.create_server_context(self, bind=(self.address, self.port))
-            self.context.client_credentials.load_from_dict(
-                { f'*' : { 'dtls' : {
-                    'psk' : self.server_psk,
-                    'client-identity' : self.endpoint.encode()
-                }}}
-            )
-        else:
-            self.context = await Context.create_server_context(self, bind=(self.address, self.port))
-        # Start registration task
-        asyncio.ensure_future(self.registration_task())
+        self.running = True
+        try:
+            self.build_site()
+            if not self.server_address or not self.server_port:
+                # Perform bootstrap to obtain server
+                await self.client_bootstrap(address, port)
+            if self.server_psk:
+                self.context = await DtlsContext.create_server_context(self, bind=(address, port))
+                self.context.client_credentials.load_from_dict(
+                    { f'*' : { 'dtls' : {
+                        'psk' : self.server_psk,
+                        'client-identity' : self.endpoint.encode()
+                    }}}
+                )
+            else:
+                self.context = await Context.create_server_context(self, bind=(address, port))
+            # Start registration task
+            await self.registration_task()
+            log.info('Client stopped.')
+        finally:
+            if self.context:
+                await self.context.shutdown()
+        return
+
+    def stop(self):
+        log.info('Stopping client.')
+        self.running = False
+        self.register_event.set()

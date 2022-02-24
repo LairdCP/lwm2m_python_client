@@ -8,6 +8,7 @@ setup(
     py_modules=[
         'lwm2m/__init__',
         'lwm2m/base',
+        'lwm2m/bearer',
         'lwm2m/block',
         'lwm2m/bootstrap',
         'lwm2m/cellular',
@@ -22,6 +23,7 @@ setup(
         'lwm2m/wlan',
         '__init__',
         '__main__',
+        'ig60_bearer',
         'ig60_cellular',
         'ig60_connmon',
         'ig60_device',

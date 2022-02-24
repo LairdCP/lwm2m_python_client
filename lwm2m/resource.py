@@ -121,6 +121,10 @@ class LwM2MResourceInst(LwM2MResourceBase):
         log.debug(f'{self.desc}: POST request format={request.opt.content_format}')
         return TlvDecoder.update_resource_value(request, self)
 
+    async def render_put(self, request):
+        log.debug(f'{self.desc}: PUT request format={request.opt.content_format}')
+        return TlvDecoder.update_resource_value(request, self)
+
 class LwM2MMultiResource(LwM2MBase):
     """Implementation of an LwM2M multiple resource that contains resource instances"""
 
@@ -186,7 +190,11 @@ class LwM2MMultiResource(LwM2MBase):
 
     async def render_post(self, request):
         log.debug(f'{self.desc}: POST request format={request.opt.content_format}')
-        return TlvEncoder.update_multi_resource(self)
+        return TlvDecoder.update_multi_resource(request, self)
+
+    async def render_put(self, request):
+        log.debug(f'{self.desc}: PUT request format={request.opt.content_format}')
+        return TlvDecoder.update_multi_resource(request, self)
 
 class LwM2MExecutableResource(LwM2MBase):
     """LwM2M resource that executes a callback function"""
