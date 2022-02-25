@@ -19,6 +19,7 @@ setup(
         'lwm2m/object',
         'lwm2m/resource',
         'lwm2m/tlv',
+        'lwm2m/wlan',
         '__init__',
         '__main__',
         'ig60_cellular',
@@ -26,6 +27,7 @@ setup(
         'ig60_device',
         'ig60_fwupdate',
         'ig60_lwm2m_client',
-        'ig60_network'
+        'ig60_network',
+        'ig60_wlan'
         ]
       )
