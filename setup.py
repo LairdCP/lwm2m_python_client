@@ -2,9 +2,12 @@
 
 from setuptools import setup
 
+# Obtain version but don't import directly to avoid circular dependencies
+exec(open('version.py').read())
+
 setup(
     name='lwm2m_python_client',
-    version='0.1',
+    version=__version__,
     py_modules=[
         'lwm2m/__init__',
         'lwm2m/base',
@@ -19,6 +22,7 @@ setup(
         'lwm2m/fwupdate',
         'lwm2m/object',
         'lwm2m/resource',
+        'lwm2m/swmgmt',
         'lwm2m/tlv',
         'lwm2m/wlan',
         '__init__',
@@ -30,6 +34,8 @@ setup(
         'ig60_fwupdate',
         'ig60_lwm2m_client',
         'ig60_network',
-        'ig60_wlan'
+        'ig60_swmgmt',
+        'ig60_wlan',
+        'version'
         ]
       )

@@ -11,22 +11,21 @@ The IG60 Laird Linux image will include all the necessary Python pre-requisites.
 
 # Usage
 
-## Installation
-To install the client on an IG60, simply copy this source tree to the local filesystem on an IG60
-running Laird Linux; e.g.:
-
-    scp -r * root@192.168.1.10:/root
-
 ## Running The Client
 
-Run ``python ig60_lwm2m_client.py --help`` command to display the command-line options available.
-For example, to connect an IG60 as client named "my-ig60" with a local IP address of 192.168.1.10
-to an LWM2M server running on 192.168.1.2
+The IG60 LwM2M Python client is pre-installed on the IG60LLSD image.  There
+also exists a help script that manages the client lifecycle by copying
+the client to a writeable location (on first boot), and copying an updated
+client when the client has been updated (see Object 9, below).  Run the
+helper script with the ``--help`` option to see all available command
+line arguments:
 
-    python ig60_lwm2m_client.py -a 192.168.1.10 -p 5682 -s 192.168.1.2 -sp 5684 -e my-ig60
+    ig60_lwm2m2_client.sh --help
 
-Note that you **must** specify a local address (``--address``) and port (``--port``) to bind the client to; this
-determines the interface (Ethernet, WLAN, or LTE) that the client will utilize.
+For example, to connect an IG60 as client named "my-ig60" to
+connect an LWM2M server running on 192.168.1.2 and port 5684:
+
+    ig60_lwm2m2_client.sh --server 192.168.1.2 --server-port 5684 -e my-ig60
 
 **IMPORTANT:** If the LwM2M client is run behind a firewall (to the server, e.g., to a cloud-based
 LwM2M service such as Cumulocity), the firewall **must** support UDP NAT traversal ("hole punching"),
@@ -79,6 +78,20 @@ It is **highly recommended** to use the last method as CoAP transfer is limited 
 of 1024-byte blocks at a time and is **very** slow.  Also note that it has been observed that
 the Cumulocity HTTPS server will present a self-signed certificate, which will (correctly)
 cause the client download to fail.
+
+### Software Management (Object 9)
+The IG60 LwM2M client exposes a single instance of Object 9 to enable
+in-place update of the client itself.  The update package must be a
+gzipped-tarball containing the new client executable (Python egg named
+'lwm2m-python-client') and a checksum file 'checksums.txt' containing the
+SHA256 hash of the client.  An update package can be transferred via
+the "package" resource (/9/0/2) or via a URI (/9/0/3).  Once the
+update has been verified (state reports 3 "Verified"), the update should
+be installed (via resource /9/0/4) and activated (via resource /9/0/10).
+Once activated, the client will exit and signal to the helper script
+that the update should be copied, then the helper script will restart
+the (new) client.  Note that the client cannot be de-activated or
+uninstalled (as this would be counterproductive).
 
 ### Cellular Connectivity (Object 10) and APN Profile (Object 11)
 The IG60 LwM2M client will expose the cellular connectivity status (object 10) and APN profile (object 11)

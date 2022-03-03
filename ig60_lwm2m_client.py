@@ -18,6 +18,7 @@ from ig60_cellular import IG60Cellular, IG60APNProfile
 from ig60_wlan import IG60WLANProfileBase
 from lwm2m.wlan import LWM2M_WLAN_OBJECT
 from ig60_bearer import IG60BearerObject
+from ig60_swmgmt import IG60SWManagementObject
 
 RET_SUCCESS = 0
 
@@ -28,10 +29,15 @@ class BearerUpdated(Exception):
     """Exception used to signal bearer selection changed"""
     pass
 
+class ClientUpdated(Exception):
+    """Exception used to signal client was updated via software management"""
+    pass
+
 class IG60LwM2MClient(LwM2MClient):
     def __init__(self, port, **kwargs):
         super(IG60LwM2MClient, self).__init__(**kwargs)
         self.port = port
+        self.result = None
         # Create IG60 Network interface helper
         self.ig60net = IG60Network()
         # Add IG60 Device object
@@ -53,13 +59,15 @@ class IG60LwM2MClient(LwM2MClient):
         # Add Bearer Selection object with callback
         self.ig60_bearer = IG60BearerObject(self.set_bearer)
         self.add_object(self.ig60_bearer)
+        # Add Software Management object
+        self.add_object(IG60SWManagementObject(self.sw_install))
 
     async def run(self):
-        ret = None
-        while (ret is None or ret == RET_SUCCESS): # Emulate do-while
+        self.result = None
+        while (self.result is None or self.result == RET_SUCCESS): # Emulate do-while
             try:
                 conns = self.ig60net.get_available_connections()
-                ret = errno.ENONET
+                self.result = errno.ENONET
                 # Attempt a connection on each available interface that
                 # is in the bearer list
                 interfaces = self.ig60_bearer.get_interfaces()
@@ -73,9 +81,16 @@ class IG60LwM2MClient(LwM2MClient):
                             try:
                                 # Update Connection Monitor object with current binding info
                                 self.connmon.update_bind(i, address)
+                                self.result = RET_SUCCESS
                                 await self.start(address, self.port)
-                                # Client exited, so restart bearer selection
-                                raise BearerUpdated()
+                                if self.result == RET_SUCCESS:
+                                    # Client exited without a result code,
+                                    # restart bearer selection
+                                    raise BearerUpdated()
+                                elif self.result == errno.ENOPKG:
+                                    # Client updated, exit with package
+                                    # update result
+                                    raise ClientUpdated()
                             except aiocoap.error.TimeoutError:
                                 log.warn('CoAP timeout occurred')
                             except aiocoap.error.ConstructionRenderableError as e:
@@ -84,17 +99,23 @@ class IG60LwM2MClient(LwM2MClient):
                                 log.warn('CoAP error occurred')
             except BearerUpdated:
                 log.info('Restarting bearer selection.')
-                ret = RET_SUCCESS
+            except ClientUpdated:
+                log.info('Client updated, exiting.')
             except asyncio.CancelledError:
                 log.warn('Client task cancelled.')
-                ret = errno.EINTR
+                self.result = errno.EINTR
             except Exception as e:
                 log.error(f'Exception during client execution: {e}')
-                ret = errno.EAGAIN
-        return ret
+                self.result = errno.EAGAIN
+        return self.result
 
     def set_bearer(self, bearer_value):
         log.info('Default bearer written, stopping client.')
+        self.stop()
+
+    def sw_install(self):
+        log.info('Client application updated, exiting.')
+        self.result = errno.ENOPKG
         self.stop()
 
 async def client_task():

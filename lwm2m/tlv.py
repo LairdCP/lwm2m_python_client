@@ -239,7 +239,7 @@ class TlvDecoder(object):
             _payload = _payload[1:]
         if _len is None:
             _len = int.from_bytes(_payload[0:_len_type], byteorder='big')
-            logger.info(f'value length: {_len}')
+            logger.debug(f'value length: {_len}')
             _payload = _payload[_len_type:]
         _value = _payload[0:_len]
         remain = _payload[_len:]
