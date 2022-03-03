@@ -7,6 +7,8 @@ import asyncio
 from aiocoap.message import Message
 from aiocoap.numbers.codes import Code
 from aiocoap.optiontypes import BlockOption
+from aiocoap.protocol import Context
+from aiocoap.error import Error, ConstructionRenderableError
 
 from .base import LwM2MBase
 from .tlv import MediaType, TlvDecoder
@@ -134,3 +136,34 @@ class LwM2MBlockwiseFileResource(LwM2MBlockwiseResource):
             if self.end_cb:
                 self.end_cb()
 
+class CoAPDownloadClient():
+    """Client to download a file via CoAP"""
+
+    async def download(self, uri, file_path, req_sz_exp = COAP_BLOCKWISE_MAX_EXPONENT):
+        log.info(f'Downloading file via CoAP from {uri}')
+        client = await Context.create_client_context()
+        more = True
+        block_number = 0
+        total_bytes = 0
+        with open(file_path, 'wb') as f:
+            while more:
+                request = Message(code=Code.GET,
+                    uri=uri,
+                    block2=BlockOption.BlockwiseTuple(
+                        block_number,
+                        True,
+                        req_sz_exp),
+                   )
+                response = await client.request(request, handle_blockwise=False).response
+                if not response.code.is_successful():
+                    raise ConstructionRenderableError(response)
+                if response.opt.block2 is None:
+                    # Payload is single message
+                    more = False
+                else:
+                    more = response.opt.block2.more
+                if response.payload:
+                    n = f.write(response.payload)
+                    total_bytes = total_bytes + n
+                block_number = block_number + 1
+            log.info(f'CoAP download: wrote {total_bytes} to {file_path}')

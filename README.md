@@ -62,13 +62,23 @@ been enabled prior to launching the client, additional applicable resources such
 identifiers will be readable.
 
 ### Firmware Update (Object 5)
-The IG60 LwM2M client implements both push (blockwise transfer via resource 0) and pull (HTTP download
+The IG60 LwM2M client implements both push (blockwise transfer via resource 0) and pull (download
 via URI written to resource 1) to obtain the firmware update image, which is downloaded to a temporary
 file (``/tmp/update.bin``).  When the firmware update is executed via resource 2, the IG60 LwM2M client
 calls an external shell script (``ig60_fw_update.sh``) passing the path of the firmware image as the
 single argument to the script.  This source includes an implementation of the script which will apply
 the update image as an swupdate package and change the bootside in U-Boot once the update has
 been successfully applied.  (The update script must be in the ``PATH`` to be executed).
+
+Note that the LwM2M client supports 3 methods to download the firmware image:
+- "Push" via CoAP blockwise-transfer to resource 0
+- "Pull" from URI via CoAP (e.g., "coap://lwm2m.us.cumulocity.com/123456")
+- "Pull" from URI via HTTP(S) (e.g., "http://lwm2m.us.cumulocity.com/123456")
+
+It is **highly recommended** to use the last method as CoAP transfer is limited to a maximum
+of 1024-byte blocks at a time and is **very** slow.  Also note that it has been observed that
+the Cumulocity HTTPS server will present a self-signed certificate, which will (correctly)
+cause the client download to fail.
 
 ### Cellular Connectivity (Object 10) and APN Profile (Object 11)
 The IG60 LwM2M client will expose the cellular connectivity status (object 10) and APN profile (object 11)

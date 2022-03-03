@@ -7,6 +7,7 @@ import requests
 from requests.exceptions import RequestException
 
 from lwm2m.fwupdate import *
+from lwm2m.block import CoAPDownloadClient
 
 log = logging.getLogger('ig60fwupdate')
 
@@ -53,12 +54,26 @@ class IG60FWUpdateObject(LwM2MFWUpdateObject):
             log.info(f'Wrote {total_bytes} to {destfile}')
             self.fw_downloaded = True
             self.report_update_state(LWM2M_FWUPDATE_STATE_DOWNLOADED)
-        except:
-            log.warn('Failed to download update file via HTTP')
+        except Exception as e:
+            log.warn(f'Failed to download update file via HTTP: {e}')
             # Download failure, set results per LwM2M state machine
             self.report_update_state(LWM2M_FWUPDATE_STATE_IDLE)
             self.report_update_result(LWM2M_FWUPDATE_RESULT_CONNLOST)
             return
+
+    async def coap_download(self, uri, destfile):
+        """Download a file via CoAP onto the local filesystem"""
+        self.report_update_state(LWM2M_FWUPDATE_STATE_DOWNLOADING)
+        try:
+            client = CoAPDownloadClient()
+            await client.download(uri, destfile)
+            self.fw_downloaded = True
+            self.report_update_state(LWM2M_FWUPDATE_STATE_DOWNLOADED)
+        except Exception as e:
+            log.warn(f'Failed to download update file via CoAP {e}')
+            # Download failure, set results per LwM2M state machine
+            self.report_update_state(LWM2M_FWUPDATE_STATE_IDLE)
+            self.report_update_result(LWM2M_FWUPDATE_RESULT_CONNLOST)
 
     def update_block_start(self):
         """Callback indicating blockwise transfer has started"""
@@ -77,9 +92,21 @@ class IG60FWUpdateObject(LwM2MFWUpdateObject):
         log.info(f'IG60 update URI set to {uri}')
         # Always reset download state
         self.fw_downloaded = False
-        if uri:
-            # Schedule download if URI is not empty
-            asyncio.get_event_loop().create_task(self.http_download(uri, FW_UPDATE_FILE))
+        if uri.startswith('\0'):
+            # NULL byte, reset state machine
+            log.info('Resetting fwupdate state machine.')
+            self.report_update_state(LWM2M_FWUPDATE_STATE_IDLE)
+            self.report_update_result(LWM2M_FWUPDATE_RESULT_INITIAL)
+        else:
+            # Schedule download if URI is valid
+            if uri.startswith('http'):
+                asyncio.get_event_loop().create_task(self.http_download(uri, FW_UPDATE_FILE))
+            elif uri.startswith('coap'):
+                asyncio.get_event_loop().create_task(self.coap_download(uri, FW_UPDATE_FILE))
+            else:
+                # Report invalid URI
+                self.report_update_state(LWM2M_FWUPDATE_STATE_IDLE)
+                self.report_update_result(LWM2M_FWUPDATE_RESULT_INVALID_URI)
 
     async def perform_update(self):
         if not self.fw_downloaded:
