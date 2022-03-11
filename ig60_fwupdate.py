@@ -7,7 +7,7 @@ import requests
 from requests.exceptions import RequestException
 
 from lwm2m.fwupdate import *
-from lwm2m.block import CoAPDownloadClient
+from lwm2m.block import LwM2MBlock1FileResource, CoAPDownloadClient
 
 log = logging.getLogger('ig60fwupdate')
 
@@ -28,7 +28,7 @@ class IG60FWUpdateObject(LwM2MFWUpdateObject):
 
     def __init__(self):
         super(IG60FWUpdateObject, self).__init__()
-        self.add_resource(LwM2MBlockwiseFileResource(LWM2M_FWUPDATE_OBJECT, self.obj_inst, LWM2M_FWUPDATE_RESOURCE_PACKAGE, FW_UPDATE_FILE,
+        self.add_resource(LwM2MBlock1FileResource(LWM2M_FWUPDATE_OBJECT, self.obj_inst, LWM2M_FWUPDATE_RESOURCE_PACKAGE, FW_UPDATE_FILE,
             self.update_block_start, self.update_block_end))
         self.add_resource(LwM2MResourceValue(LWM2M_FWUPDATE_OBJECT, self.obj_inst, LWM2M_FWUPDATE_RESOURCE_PACKAGE_URI, '', self.set_update_uri))
         self.add_resource(LwM2MExecutableResource(LWM2M_FWUPDATE_OBJECT, self.obj_inst, LWM2M_FWUPDATE_RESOURCE_UPDATE, self.exec_update))

@@ -23,6 +23,7 @@ setup(
         'lwm2m/object',
         'lwm2m/resource',
         'lwm2m/swmgmt',
+        'lwm2m/syslog',
         'lwm2m/tlv',
         'lwm2m/wlan',
         '__init__',
@@ -35,6 +36,7 @@ setup(
         'ig60_lwm2m_client',
         'ig60_network',
         'ig60_swmgmt',
+        'ig60_syslog',
         'ig60_wlan',
         'version'
         ]

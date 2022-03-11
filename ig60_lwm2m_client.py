@@ -19,6 +19,7 @@ from ig60_wlan import IG60WLANProfileBase
 from lwm2m.wlan import LWM2M_WLAN_OBJECT
 from ig60_bearer import IG60BearerObject
 from ig60_swmgmt import IG60SWManagementObject
+from ig60_syslog import IG60SyslogObject
 
 RET_SUCCESS = 0
 
@@ -61,6 +62,8 @@ class IG60LwM2MClient(LwM2MClient):
         self.add_object(self.ig60_bearer)
         # Add Software Management object
         self.add_object(IG60SWManagementObject(self.sw_install))
+        # Add system Log object
+        self.add_object(IG60SyslogObject())
 
     async def run(self):
         self.result = None

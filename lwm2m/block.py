@@ -17,7 +17,7 @@ log = logging.getLogger('block')
 
 COAP_BLOCKWISE_MAX_EXPONENT = 6 # Max block size = 1024
 
-class LwM2MBlockwiseResource(LwM2MBase):
+class LwM2MBlock1Resource(LwM2MBase):
     """LwM2M resource that handles incoming blockwise transfer (Block1)"""
 
     def __init__(self, obj_id, obj_inst, res_id, resp_sz_exp = COAP_BLOCKWISE_MAX_EXPONENT):
@@ -26,7 +26,7 @@ class LwM2MBlockwiseResource(LwM2MBase):
         self.res_id = res_id
         self.resp_sz_exp = resp_sz_exp
         self.last_block_number = None
-        super(LwM2MBlockwiseResource, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
+        super(LwM2MBlock1Resource, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
 
     async def needs_blockwise_assembly(self, request):
         # aiocoap can handle the entire blockwise transfer, but we want to handle the individual
@@ -97,12 +97,12 @@ class LwM2MBlockwiseResource(LwM2MBase):
             return request.payload
 
     def start_payload(self):
-        log.debug(f'{self.desc}: Starting new blockwise payload')
+        log.debug(f'{self.desc}: Starting new block1 payload')
 
     def handle_payload(self, payload, more):
-        log.debug(f'{self.desc}: Received {"" if more else "last"} blockwise payload of {len(payload)} bytes')
+        log.debug(f'{self.desc}: Received {"" if more else "last"} block1 payload of {len(payload)} bytes')
 
-class LwM2MBlockwiseFileResource(LwM2MBlockwiseResource):
+class LwM2MBlock1FileResource(LwM2MBlock1Resource):
     """LwM2M resource that receives blockwise transfer into a file"""
 
     def __init__(self, obj_id, obj_inst, res_id, file_path, start_cb = None, end_cb = None):
@@ -113,7 +113,7 @@ class LwM2MBlockwiseFileResource(LwM2MBlockwiseResource):
         self.start_cb = start_cb
         self.end_cb = end_cb
         self.f = None
-        super(LwM2MBlockwiseFileResource, self).__init__(obj_id, obj_inst, res_id)
+        super(LwM2MBlock1FileResource, self).__init__(obj_id, obj_inst, res_id)
 
     def start_payload(self):
         if self.f:
@@ -135,6 +135,92 @@ class LwM2MBlockwiseFileResource(LwM2MBlockwiseResource):
             self.f = None
             if self.end_cb:
                 self.end_cb()
+
+class LwM2MBlock2FileResource(LwM2MBase):
+    """LwM2M resource that handles outgoing blockwise transfer (Block2) from a file"""
+
+    def __init__(self, obj_id, obj_inst, res_id, filename, resp_sz_exp = COAP_BLOCKWISE_MAX_EXPONENT):
+        self.obj_id = obj_id
+        self.obj_inst = obj_inst
+        self.res_id = res_id
+        self.filename = filename
+        self.resp_sz_exp = resp_sz_exp
+        self.block_number = None
+        super(LwM2MBlock2FileResource, self).__init__(f'Obj_{obj_id}_{obj_inst}_Res_{res_id}')
+
+    async def needs_blockwise_assembly(self, request):
+        # aiocoap can handle the entire blockwise transfer, but we want to handle the individual
+        # blocks so we can stream the outgoing data
+        return False
+
+    def get_id(self):
+        return self.res_id
+
+    def notify(self, notify_cb):
+        pass
+
+    def build_site(self, site):
+        log.debug(f'{self.obj_id}/{self.obj_inst}/{self.res_id} -> {self.desc}')
+        site.add_resource((str(self.obj_id), str(self.obj_inst), str(self.res_id)), self)
+
+    async def render_get(self, request):
+        log.debug(f'{self.desc}: GET Request, block2={request.opt.block2}')
+        if request.opt.block2 is None:
+            # Initial request, no Block2 options specified
+            self.start_payload()
+        return self.handle_request(request)
+
+    def start_payload(self):
+        log.debug(f'{self.desc}: Starting new block2 transfer')
+        self.f = open(self.filename, 'r')
+
+    def end_payload(self):
+        self.f.close()
+
+    def handle_request(self, request):
+        if request.opt.block2:
+            sz_exp = request.opt.block2.size_exponent
+        else:
+            sz_exp = self.resp_sz_exp
+        max_len = (1<<(sz_exp+4))
+        payload = self.f.read(max_len).encode()
+        if len(payload) < max_len:
+            if request.opt.block2:
+                # Encode as last block
+                log.debug(f'Encoding {len(payload)} bytes as last block {request.opt.block2.block_number}')
+                resp = Message(code=Code.CONTENT,
+                               payload=payload,
+                               content_format=MediaType.TEXT.value,
+                               block2=BlockOption.BlockwiseTuple(
+                                    request.opt.block2.block_number,
+                                    False,
+                                    sz_exp),
+                               )
+            else:
+                # Encode as non-block transfer
+                log.debug(f'Encoding {len(payload)} bytes')
+                resp = Message(code=Code.CONTENT,
+                               payload=payload,
+                               content_format=MediaType.TEXT.value
+                               )
+            self.end_payload()
+        else:
+            # Encode as next block
+            if request.opt.block2:
+                block_num = request.opt.block2.block_number
+            else:
+                block_num = 0
+            log.debug(f'Encoding {len(payload)} bytes as block {block_num}')
+            resp = Message(code=Code.CONTENT,
+                           payload=payload,
+                           content_format=MediaType.TEXT.value,
+                           block2=BlockOption.BlockwiseTuple(
+                                block_num,
+                                True,
+                                sz_exp),
+                           )
+        log.debug(f'Returning block2 response: {resp}')
+        return resp
 
 class CoAPDownloadClient():
     """Client to download a file via CoAP"""

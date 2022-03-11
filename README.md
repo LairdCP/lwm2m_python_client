@@ -135,3 +135,14 @@ resource values will be observed (any others will be ignored):
 * 4: 3GPP LTE
 * 7: WLAN
 * 8: Ethernet
+
+### System Log (Object 10259)
+The IG60 LwM2M client exposes a single instance of the System Log object
+(10259) to enable reading of the journald log.  The 'Read All' resource
+(/10259/0/1) will read the entire log, and 'Read' (/10259/0/2) will read
+the entire log on the first read (from client startup) and then will
+return incremental logs.  Other resources are not implemented.
+
+***NOTE:*** When using a Leshan server, the default maximum incoming message
+size is 8192, and should be increased (by changing ```COAP.MAX_RESOURCE_BODY_SIZE```
+in the server properties file) to be able to read larger system logs.

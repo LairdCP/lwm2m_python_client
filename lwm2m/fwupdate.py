@@ -7,7 +7,6 @@ import asyncio
 from .base import LwM2MBase
 from .object import LwM2MObjectInst, LwM2MBaseObject
 from .resource import LwM2MResourceValue, LwM2MExecutableResource
-from .block import LwM2MBlockwiseFileResource
 
 log = logging.getLogger('fwupdate')
 

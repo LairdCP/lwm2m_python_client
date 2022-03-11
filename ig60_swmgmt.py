@@ -12,7 +12,7 @@ import subprocess
 from version import __version__
 from lwm2m.resource import LwM2MResourceValue, LwM2MExecutableResource
 from lwm2m.swmgmt import *
-from lwm2m.block import *
+from lwm2m.block import LwM2MBlock1FileResource, CoAPDownloadClient
 
 log = logging.getLogger('ig60swmgmt')
 
@@ -47,7 +47,7 @@ class IG60SWManagementObject(LwM2MSWManagementObject):
         self.activate_cb = activate_cb
         self.add_resource(LwM2MResourceValue(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_PKGNAME, SW_PACKAGE_NAME))
         self.add_resource(LwM2MResourceValue(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_PKGVERSION, __version__))
-        self.add_resource(LwM2MBlockwiseFileResource(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_PACKAGE, SW_UPDATE_FILE,
+        self.add_resource(LwM2MBlock1FileResource(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_PACKAGE, SW_UPDATE_FILE,
             self.update_block_start, self.update_block_end))
         self.add_resource(LwM2MResourceValue(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_PACKAGE_URI, '', self.set_update_uri))
         self.add_resource(LwM2MExecutableResource(LWM2M_SWMGMT_OBJECT, self.obj_inst, LWM2M_SWMGMT_RESOURCE_INSTALL, self.exec_install))
