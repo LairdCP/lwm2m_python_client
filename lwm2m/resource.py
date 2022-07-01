@@ -96,8 +96,8 @@ class LwM2MResourceValue(LwM2MResourceBase):
 class LwM2MResourceInst(LwM2MResourceBase):
     """Implementation of an LwM2M resource instance"""
 
-    def __init__(self, obj_id, obj_inst, res_id, res_inst, value = None):
-        super(LwM2MResourceInst, self).__init__(obj_id, obj_inst, res_id, res_inst, value)
+    def __init__(self, obj_id, obj_inst, res_id, res_inst, value = None, value_written_cb = None):
+        super(LwM2MResourceInst, self).__init__(obj_id, obj_inst, res_id, res_inst, value, value_written_cb)
 
     def get_inst(self):
         return self.res_inst

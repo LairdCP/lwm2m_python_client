@@ -8,6 +8,7 @@
 import asyncio
 import logging
 import re
+import subprocess
 
 # Import DBus/Glib stuff conditionally to allow development platforms
 # (e.g., PC) to run (without the network functionality)
@@ -65,6 +66,9 @@ OFONO_NETREG_IFACE = 'org.ofono.NetworkRegistration'
 OFONO_CONNMAN_IFACE = 'org.ofono.ConnectionManager'
 OFONO_CONNECTION_IFACE = 'org.ofono.ConnectionContext'
 OFONO_LTE_IFACE = 'org.ofono.LongTermEvolution'
+
+# Metric for our special route (should be smaller than any default interface)
+SPECIAL_ROUTE_METRIC = 3
 
 log = logging.getLogger('ig60network')
 
@@ -259,3 +263,26 @@ class IG60Network():
                     return
         except Exception as e:
             log.error(f'Failed to delete connection: {e}')
+
+    def find_default_route_by_iface(self, iface):
+        p = subprocess.run(['ip', 'route'], capture_output=True, text=True)
+        for l in p.stdout.splitlines():
+            if l.startswith('default') and iface in l:
+                return l
+        return None
+
+    def add_special_route_for_iface(self, iface):
+        route_w = self.find_default_route_by_iface(iface).split()
+        # Create new route from output with new metric
+        for i in range(0, len(route_w)):
+            if route_w[i] == 'metric':
+                route_w[i+1] = str(SPECIAL_ROUTE_METRIC)
+        cmd = ['ip', 'route', 'add']
+        cmd.extend(route_w)
+        log.debug('Adding route: ' + ' '.join(cmd))
+        subprocess.run(cmd)
+
+    def delete_special_route(self):
+        cmd = ['ip', 'route', 'del', 'default', 'metric', str(SPECIAL_ROUTE_METRIC)]
+        log.debug('Deleting special route: ' + ' '.join(cmd))
+        subprocess.run(cmd)

@@ -80,11 +80,13 @@ class IG60LwM2MClient(LwM2MClient):
                     for iface, _, addrs, _ in match_conns:
                         # Attempt connection on each address on the interface
                         for address in addrs:
-                            log.info(f'Binding to {address} on interface {i}')
+                            log.info(f'Adding special route for interface {iface}')
+                            self.ig60net.add_special_route_for_iface(iface)
                             try:
                                 # Update Connection Monitor object with current binding info
                                 self.connmon.update_bind(i, address)
                                 self.result = RET_SUCCESS
+                                log.info(f'Starting client on {address}:{self.port}')
                                 await self.start(address, self.port)
                                 if self.result == RET_SUCCESS:
                                     # Client exited without a result code,
@@ -100,6 +102,8 @@ class IG60LwM2MClient(LwM2MClient):
                                 log.warn(f'CoAP response error {e.message.code}')
                             except aiocoap.error.Error:
                                 log.warn('CoAP error occurred')
+                            finally:
+                                self.ig60net.delete_special_route()
             except BearerUpdated:
                 log.info('Restarting bearer selection.')
             except ClientUpdated:
@@ -123,7 +127,6 @@ class IG60LwM2MClient(LwM2MClient):
 
 async def client_task():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', '--address', default='127.0.0.1', help='Local address to bind')
     parser.add_argument('-p', '--port', type=int, default=5782, help='Local port to bind')
     parser.add_argument('-bs', '--bootstrap-address', default='', help='Address of bootstrap server')
     parser.add_argument('-bp', '--bootstrap-port', default=5683, help='Port of bootstrap server')

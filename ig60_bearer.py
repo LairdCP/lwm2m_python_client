@@ -28,6 +28,9 @@ class IG60DefaultBearerResource(LwM2MMultiResource):
         super(IG60DefaultBearerResource, self).update(instances)
         self.set_bearer_cb(instances)
 
+    def value_written(self, value):
+        self.set_bearer_cb(self.instances)
+
     def get_interfaces(self):
         """Get ordered list of interfaces names from bearer resources"""
         interfaces = []
@@ -54,7 +57,7 @@ class IG60BearerObject(LwM2MObjectInst):
         self.default_bearer_res = IG60DefaultBearerResource(set_bearer_cb)
         self.default_bearer_res.add_res_inst(LwM2MResourceInst(LWM2M_BEARER_OBJECT,
             LWM2M_BEARER_INSTANCE, LWM2M_BEARER_RESOURCE_PREFERRED_BEARER, 0,
-            LWM2M_BEARER_AUTO))
+            LWM2M_BEARER_AUTO, self.default_bearer_res.value_written))
         self.add_resource(self.default_bearer_res)
 
     def get_interfaces(self):
