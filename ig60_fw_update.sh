@@ -8,37 +8,25 @@
 # is the LwM2M update state result.
 #
 
-# Make verbose log, fail on uncaught errors
-set -xe
+# Make verbose log
+set -x
 
 UPDATEFILE=$1
-UPDATE_EXCLUDE="2 3" # Ignore U-Boot environment
 
-cleanup_and_fail(){
-    echo $1
-    rm -f ${UPDATEFILE}
-    exit 8 # LwM2M result = UPDATE_RESULT_FAILED
-}
-
-# Read the configured bootside and actual root filesystem partition in use
-BOOTSIDE=`fw_printenv -n bootside` || cleanup_and_fail "Cannot read bootside"
-
-if [ ${BOOTSIDE} == "a" ]; then
-    UPDATESIDE="b"
-else
-    UPDATESIDE="a"
-fi
-
-UPDATESEL="stable,main-${UPDATESIDE}"
-
-# Apply update
-echo "Applying update ${UPDATESEL} from ${UPDATEFILE}"
-swupdate -b "${UPDATE_EXCLUDE}" -l 4 -v -i "${UPDATEFILE}" -e "${UPDATESEL}" || cleanup_and_fail "Failed to perform swupdate"
-
-# Change the bootside
-fw_setenv bootside ${UPDATESIDE} || cleanup_and_fail "Cannot set bootside"
+# Call the built-in 'fw_update' script
+# -v: verbose
+# -m: method (full)
+# -x r: extra options - prevent auto-reboot
+fw_update -v -m full -x r "${UPDATEFILE}"
+EXIT_STATUS=$?
 
 # Delete the update file
 rm -f ${UPDATEFILE}
 
-exit 1 # LwM2M update result = UPDATE_RESULT_SUCESS
+# Check 'fw_update' exit code
+if [ ${EXIT_STATUS} -eq 0 ]; then
+    exit 1 # LwM2M update result = UPDATE_RESULT_SUCESS
+else
+    echo "Failed to perform swupdate"
+    exit 8 # LwM2M result = UPDATE_RESULT_FAILED
+fi
