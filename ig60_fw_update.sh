@@ -15,9 +15,8 @@ UPDATEFILE=$1
 
 # Call the built-in 'fw_update' script
 # -v: verbose
-# -m: method (full)
 # -x r: extra options - prevent auto-reboot
-fw_update -v -m full -x r "${UPDATEFILE}"
+fw_update -v -x r "${UPDATEFILE}"
 EXIT_STATUS=$?
 
 # Delete the update file
